@@ -81,6 +81,21 @@ textarea{min-height:220px;resize:vertical}
 .note{font-size:13px;color:var(--mute);margin:6px 0 0}
 .dact{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
 #toast{position:fixed;top:76px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:9;max-width:92vw}
+
+.tabs{display:flex;gap:4px;margin:0 0 22px;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;min-height:44px;padding:0 14px;font-weight:500;color:var(--mute);margin-bottom:-1px}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--hi)}
+#guide{max-width:68ch;font-family:var(--rf);font-size:clamp(17px,calc(var(--rs) - 3px),24px);line-height:1.7}
+#guideOut h3{font-family:'Lexend',sans-serif;font-size:1.1em;margin:1.5em 0 .4em;padding:3px 10px;background:var(--sent);border-radius:6px;display:inline-block}
+#guideOut h3:first-child{margin-top:0}
+#guideOut ul,#guideOut ol{padding-left:1.3em;margin:.3em 0 .8em}#guideOut li{margin:.25em 0}
+#guideOut p{margin:.3em 0 .8em}
+.gintro{border:1px solid var(--line);border-radius:14px;padding:18px;background:var(--card);margin-bottom:18px}
+.gintro p{margin:0 0 12px;font-family:'Lexend',sans-serif;font-size:16px;line-height:1.55}
+.gacts{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
+.gnote{color:var(--mute);font-size:14px;font-family:'Lexend',sans-serif;line-height:1.5}
+.thinking{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--hi);margin-right:8px;animation:pulse 1s infinite alternate}
+@keyframes pulse{to{opacity:.25}}
 @media(max-width:600px){.drop{grid-template-columns:1fr}.art{max-height:180px;order:-1}.stat{display:none}.prow{justify-content:space-between}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
@@ -130,7 +145,26 @@ textarea{min-height:220px;resize:vertical}
 <section class="band reader" id="reader" hidden>
   <h1 id="docTitle"></h1>
   <div class="meta" id="meta"></div>
+  <div class="tabs" role="tablist">
+    <button id="tabRead" class="on" role="tab" aria-selected="true">Read along</button>
+    <button id="tabGuide" role="tab" aria-selected="false">Study guide</button>
+  </div>
   <article id="text"></article>
+  <section id="guide" hidden>
+    <div class="gintro" id="gIntro">
+      <p>Claude reads the whole article and makes a study guide: the context, a plain-language summary, key terms defined, the main arguments, how the author reasons, the evidence used, and next steps for your seminar or essay.</p>
+      <button class="btn pri" id="gMake">Make study guide</button>
+      <p class="gnote" id="gAvail" style="margin:12px 0 0"></p>
+    </div>
+    <div id="gStatus" class="gnote" hidden></div>
+    <div id="guideOut" aria-live="polite"></div>
+    <div class="gacts" id="gActs" hidden>
+      <button class="btn pri" id="gListen">Listen to the study guide</button>
+      <button class="btn" id="gCopy">Copy</button>
+      <button class="btn" id="gRedo">Make a new one</button>
+    </div>
+    <p class="gnote" id="gFoot" hidden>Made by Claude from this reading. It can make mistakes, so check anything important against the text, especially quotes and page numbers.</p>
+  </section>
 </section>
 </main>
 
@@ -239,6 +273,7 @@ function openDoc(d){
   $('docTitle').textContent=d.title;
   $('meta').textContent=`${totalWords.toLocaleString()} words · about ${Math.max(1,Math.round(totalWords/180))} min at normal speed`;
   $('home').hidden=true;$('reader').hidden=false;$('player').hidden=false;
+  showTab(false);
   d.n=S.length;
   cur=Math.min(d.pos||0,Math.max(0,S.length-1));lastWord=0;
   mark(cur,true);updStat();scrollTo(0,0);setTimeout(()=>scrollCur(true),60);
@@ -326,7 +361,7 @@ function renderLib(){
 }
 $('lib').addEventListener('click',e=>{
   const o=e.target.closest('[data-id]'),d=e.target.closest('[data-del]');
-  if(d){const id=d.dataset.del;store.set('sr-lib',lib().filter(x=>x.id!==id));store.del('sr-doc-'+id);renderLib();return}
+  if(d){const id=d.dataset.del;store.set('sr-lib',lib().filter(x=>x.id!==id));store.del('sr-doc-'+id);store.del('sr-guide-'+id);renderLib();return}
   if(o){const x=lib().find(y=>y.id===o.dataset.id),paras=x&&store.get('sr-doc-'+x.id,null);if(!paras){toast('That reading could not be found on this device.');return}
     openDoc({id:x.id,title:x.title,paras,pos:x.pos,n:x.n})}
 });
@@ -434,6 +469,112 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='ArrowRight')$('nextBtn').click();else if(e.key==='ArrowLeft')$('prevBtn').click();
   else if(e.key==='+'||e.key==='=')$('faster').click();else if(e.key==='-')$('slower').click();
 });
+
+/* ---------- study guide (asks Claude) ---------- */
+let sampleFn,sampleReady=null,gBusy=null;
+function getSample(){return sampleReady||(sampleReady=(async()=>{try{sampleFn=window.claude?.use?await window.claude.use('sample'):null}catch{sampleFn=null}return sampleFn})())}
+getSample().then(updGuide);
+const LIMIT=240000;
+function docText(){
+  let out='',lp=null;
+  for(const [pg,t] of doc.paras){if(pg!=null&&pg!==lp){out+=`\n[Page ${pg}]\n`;lp=pg}out+=t+'\n\n'}
+  return out.trim();
+}
+const PROMPT=`You are a study partner for a university student who has ADHD. They have this reading for class and want to understand it quickly and deeply.
+
+Write a study guide for the reading below. Use exactly these sections, each starting with "## " and the heading text shown:
+
+## In one sentence
+The core point of the reading in one plain sentence.
+
+## Context
+Who wrote it, when, and what field, debate or tradition it belongs to; what problem or question it responds to; why it matters. Use the text itself and well-established general knowledge only. If something (like the author or date) is not clear from the text, say so rather than guessing.
+
+## Summary
+3 to 6 short paragraphs that walk through the reading in order.
+
+## Key terms
+A bullet for each important concept or term the reading introduces or relies on: "- **Term**: what it means in this reading, in plain language." Note when the author uses a word in a special way.
+
+## Key arguments
+A numbered list of the main claims the author makes, from most to least central.
+
+## Reasoning
+How the author gets from their starting points to their conclusions: the steps, the assumptions they rely on, and any counterarguments they address.
+
+## Evidence
+What the author uses to support the claims (data, cases, examples, other scholars, theory). Note its strengths and limits.
+
+## Next steps
+Concrete actions: 3 to 5 questions worth raising in seminar, which parts to re-read and why (use the [Page N] markers if there are any), connections to explore, and how this reading could be used in an essay.
+
+Rules: plain, clear language; short sentences; bullets where they help. Do not invent quotes, statistics or page numbers. Only use page numbers that appear as [Page N] markers in the text. Output only the study guide.`;
+function md(src){
+  const lines=esc(src).split('\n');let h='',list=null,para=[];
+  const inl=t=>t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  const fp=()=>{if(para.length){h+='<p>'+inl(para.join(' '))+'</p>';para=[]}};
+  const fl=()=>{if(list){h+=`</${list}>`;list=null}};
+  for(const raw of lines){const l=raw.trim();let m;
+    if(!l){fp();fl();continue}
+    if(m=l.match(/^#{1,4}\s+(.*)/)){fp();fl();h+='<h3>'+inl(m[1])+'</h3>';continue}
+    if(m=l.match(/^[-*•]\s+(.*)/)){fp();if(list!=='ul'){fl();h+='<ul>';list='ul'}h+='<li>'+inl(m[1])+'</li>';continue}
+    if(m=l.match(/^\d+[.)]\s+(.*)/)){fp();if(list!=='ol'){fl();h+='<ol>';list='ol'}h+='<li>'+inl(m[1])+'</li>';continue}
+    fl();para.push(l)}
+  fp();fl();return h;
+}
+function showTab(g){
+  $('tabRead').classList.toggle('on',!g);$('tabGuide').classList.toggle('on',g);
+  $('tabRead').setAttribute('aria-selected',!g);$('tabGuide').setAttribute('aria-selected',g);
+  $('text').hidden=g;$('guide').hidden=!g;if(g)updGuide();else setTimeout(()=>scrollCur(true),30);
+}
+$('tabRead').onclick=()=>showTab(false);$('tabGuide').onclick=()=>showTab(true);
+function updGuide(){
+  if(!doc||gBusy)return;
+  const saved=store.get('sr-guide-'+doc.id,null);
+  $('guideOut').innerHTML=saved?md(saved.text):'';
+  $('gActs').hidden=$('gFoot').hidden=!saved;$('gIntro').hidden=!!saved;
+  $('gStatus').hidden=!saved?.note;$('gStatus').textContent=saved?.note||'';
+  $('gMake').textContent=sampleFn===null?'Copy reading + prompt for Claude':'Make study guide';
+  $('gAvail').textContent=sampleFn===null?'Study guides are made by Claude, which only runs when you open Study Reader inside Claude. Here, this button copies the reading with instructions, so you can paste it into a Claude chat.':'The first time, Claude will ask your permission. It takes about a minute.';
+}
+async function makeGuide(){
+  if(gBusy){gBusy.abort();return}
+  const fn=await getSample(),full=docText();
+  const text=full.length>LIMIT?full.slice(0,LIMIT):full;
+  const note=full.length>LIMIT?`This reading is very long, so the guide covers about the first ${Math.round(LIMIT/full.length*100)}% of it.`:'';
+  if(!fn){
+    try{await navigator.clipboard.writeText(PROMPT+'\n\n---\nTITLE: '+doc.title+'\n\n'+text);toast('Copied. Open a Claude chat and paste it in.',6000)}
+    catch{toast('Could not copy here. Open Study Reader inside Claude to make study guides.',7000)}
+    return;
+  }
+  const ctl=gBusy=new AbortController(),id=doc.id;
+  $('gIntro').hidden=true;$('gActs').hidden=true;$('gFoot').hidden=true;
+  $('gStatus').hidden=false;$('gStatus').innerHTML='<span class="thinking"></span>Claude is reading the article… ';
+  const stopB=document.createElement('button');stopB.className='btn';stopB.textContent='Stop';stopB.onclick=()=>ctl.abort();$('gStatus').append(stopB);
+  $('guideOut').innerHTML='';
+  try{
+    const r=await fn(PROMPT+'\n\n<reading title="'+doc.title.replace(/"/g,"'")+'">\n'+text+'\n</reading>',
+      {modelTier:'complex',signal:ctl.signal,onText:({text})=>{if(doc?.id===id&&text&&text!=='Thinking...')$('guideOut').innerHTML=md(text)}});
+    const out=(r.text||'').trim();
+    if(!out)throw{message:'Claude returned an empty answer.'};
+    store.set('sr-guide-'+id,{text:out,note:[note,r.truncated?'The guide was cut off before the end. Try "Make a new one".':''].filter(Boolean).join(' '),at:Date.now()});
+    gBusy=null;if(doc?.id===id)updGuide();
+  }catch(e){
+    gBusy=null;
+    if(doc?.id!==id)return;
+    $('gStatus').hidden=true;
+    if(ctl.signal.aborted||e?.name==='AbortError'){updGuide();if(!store.get('sr-guide-'+id,null))$('guideOut').innerHTML='';return}
+    if(e?.code==='not_granted'){sampleFn=null;updGuide();toast('Claude access was not allowed, so this button now copies the reading for you to paste into Claude instead.',8000);return}
+    updGuide();if(e?.text)$('guideOut').innerHTML=md(e.text);
+    toast(e?.code==='rate_limited'?"You've hit Claude's usage limit for now. Try again a bit later.":'Could not make the study guide: '+(e?.message||'unknown error'),8000);
+  }
+}
+$('gMake').onclick=makeGuide;
+$('gRedo').onclick=()=>{store.del('sr-guide-'+doc.id);makeGuide()};
+$('gCopy').onclick=async()=>{const g=store.get('sr-guide-'+doc.id,null);if(!g)return;try{await navigator.clipboard.writeText(g.text);toast('Study guide copied.')}catch{toast('Copying is blocked here.')}};
+$('gListen').onclick=()=>{const g=store.get('sr-guide-'+doc.id,null);if(!g)return;
+  const paras=g.text.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>[null,l.replace(/^#+\s*/,'').replace(/^[-*•]\s+/,'').replace(/\*\*?/g,'')+(/^#/.test(l)?'.':'')]);
+  newDoc('Study guide: '+doc.title,paras);};
 
 /* settings dialog */
 $('setBtn').onclick=()=>{loadVoices();$('setDlg').showModal()};

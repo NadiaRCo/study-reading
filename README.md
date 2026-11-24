@@ -9,6 +9,9 @@ A free, Speechify-style "read along" app for university readings.
 - **Skip citations**: leaves out things like (Smith, 2019) and [12] when reading aloud.
 - Remembers your place in every reading.
 - Shows page markers from the original PDF, so you can match the page numbers in class.
+- **Study guide** (when opened inside Claude): Claude reads the article and writes the context, a summary,
+  key terms defined, key arguments, reasoning, evidence and suggested next steps. You can listen to the guide too.
+  Outside Claude, the button copies the reading with instructions to paste into a Claude chat.
 - Keyboard: Space = play/pause, ←/→ = previous/next sentence, +/− = speed.
 
 ## How it works
