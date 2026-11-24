@@ -274,8 +274,10 @@ function spoken(t){
   for(let j=pos;j<t.length;j++){out+=t[j];map.push(j)}
   return{t:out,map};
 }
-function speak(i,from=0){
+function speak(i,from=0,tries=0){
   if(!synth){toast('This browser cannot read aloud. Try Chrome, Safari or Edge.');return}
+  // iPhone only allows speech that starts directly from a tap, so everything here runs synchronously.
+  curU=null;if(synth.speaking||synth.pending)synth.cancel();if(synth.paused)synth.resume();
   if(i>=S.length){stop();cur=Math.max(0,S.length-1);toast('Finished. Nice work.');return}
   cur=i;mark(i);
   const base=S[i].t.slice(from),{t,map}=spoken(base);
@@ -284,14 +286,21 @@ function speak(i,from=0){
   if(v){u.voice=v;u.lang=v.lang}
   u.rate=set.rate;
   u.onboundary=e=>{if(u!==curU||(e.name&&e.name!=='word'))return;hiWord(i,from+(map?(map[e.charIndex]??0):e.charIndex))};
-  u.onstart=()=>{if(u===curU)hiWord(i,from)};
+  u.onstart=()=>{u.ok=true;if(u===curU)hiWord(i,from)};
   u.onend=()=>{if(u!==curU)return;curU=null;lastWord=0;if(playing)speak(i+1)};
   u.onerror=e=>{if(u!==curU)return;if(e.error==='interrupted'||e.error==='canceled')return;
     curU=null;setPlaying(false);toast(e.error==='not-allowed'?'Tap play to start (your browser needs a tap first).':'The voice stopped ('+e.error+'). Tap play to keep going.')};
   curU=u;synth.speak(u);
+  setTimeout(()=>{if(u!==curU||u.ok||synth.speaking||!playing)return;
+    if(!tries)return speak(i,from,1);
+    curU=null;synth.cancel();setPlaying(false);noSound()},3000);
 }
-function restart(i,from=0){curU=null;synth&&synth.cancel();if(playing)setTimeout(()=>{if(playing&&!curU)speak(i,from)},60);else{cur=i;lastWord=from;mark(i)}}
-function play(){if(!S.length)return;setPlaying(true);follow=true;$('follow').hidden=true;curU=null;synth&&synth.cancel();setTimeout(()=>speak(cur,lastWord),30)}
+function noSound(){toast("Can't hear anything? On iPhone, turn off Silent mode (the switch on the side, or Control Centre) and turn the volume up: phones mute browser voices in Silent mode. Then tap play again.",12000)}
+// Unlock speech on the very first tap anywhere (needed on iPhone and iPad).
+let unlocked=false;
+addEventListener('pointerdown',()=>{if(unlocked||!synth)return;unlocked=true;try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;synth.speak(u)}catch{}},{capture:true});
+function restart(i,from=0){if(playing)speak(i,from);else{curU=null;synth&&synth.cancel();cur=i;lastWord=from;mark(i)}}
+function play(){if(!S.length)return;setPlaying(true);follow=true;$('follow').hidden=true;speak(cur,lastWord)}
 function stop(){setPlaying(false);curU=null;synth&&synth.cancel()}
 function pause(){setPlaying(false);curU=null;synth&&synth.cancel()}
 function setPlaying(p){playing=p;$('playBtn').setAttribute('aria-label',p?'Pause':'Play');
@@ -430,7 +439,7 @@ document.addEventListener('keydown',e=>{
 $('setBtn').onclick=()=>{loadVoices();$('setDlg').showModal()};
 $('setDone').onclick=()=>$('setDlg').close();
 $('voiceSel').onchange=e=>{set.voice=e.target.value;applySet();if(playing)restart(cur,lastWord)};
-$('testVoice').onclick=()=>{if(!synth)return;const was=playing;if(was)pause();const u=new SpeechSynthesisUtterance('Hi! This is how your readings will sound.');const v=curVoice();if(v){u.voice=v;u.lang=v.lang}u.rate=set.rate;synth.cancel();synth.speak(u)};
+$('testVoice').onclick=()=>{if(!synth)return;if(playing)pause();const u=new SpeechSynthesisUtterance('Hi! This is how your readings will sound.');const v=curVoice();if(v){u.voice=v;u.lang=v.lang}u.rate=set.rate;u.onstart=()=>u.ok=true;synth.speak(u);setTimeout(()=>{if(!u.ok&&!synth.speaking)noSound()},3000)};
 $('sizeIn').oninput=e=>{set.size=+e.target.value;applySet()};
 $('fontSel').onchange=e=>{set.font=e.target.value;applySet()};
 $('lhSel').onchange=e=>{set.lh=e.target.value;applySet()};
