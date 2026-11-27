@@ -1,5 +1,8 @@
 # Study Reader
 
+> This repo also holds **Nadia's Study Club** as a Home Screen app, in [`study-club/`](study-club/).
+> With GitHub Pages on, it lives at `https://nadiarco.github.io/study-reading/study-club/`.
+
 A free, Speechify-style "read along" app for university readings.
 
 - Open a **PDF, Word (.docx) or text file**, or paste text.
