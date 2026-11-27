@@ -1,7 +1,9 @@
 # Study Reader
 
-> This repo also holds **Nadia's Study Club** as a Home Screen app, in [`study-club/`](study-club/).
-> With GitHub Pages on, it lives at `https://nadiarco.github.io/study-reading/study-club/`.
+> This repo holds **Nadia's Study Club** as a Home Screen app in [`study-club/`](study-club/), and the
+> Study Reader below in [`reader/`](reader/). With GitHub Pages on:
+> - `https://nadiarco.github.io/study-reading/` opens the Study Club (the root page redirects to `study-club/`)
+> - `https://nadiarco.github.io/study-reading/reader/` opens the Study Reader
 
 A free, Speechify-style "read along" app for university readings.
 
@@ -39,5 +41,5 @@ files with mammoth.js. Both load from cdnjs. Nothing you open leaves your device
 
 ## Run it
 
-Open `index.html` in a browser, or host it free on GitHub Pages
+Open `reader/index.html` in a browser, or host it free on GitHub Pages
 (Settings → Pages → deploy from the `main` branch).
